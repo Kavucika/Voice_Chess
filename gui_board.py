@@ -7,9 +7,16 @@ import random
 USER_COLOR = chess.WHITE  
 
 pygame.init()
+pygame.mixer.init()
+move_sound = pygame.mixer.Sound("sounds/move_sound.wav")
+capture_sound = pygame.mixer.Sound("sounds/capture_sound.wav")
 engine = pyttsx3.init()
 
+captured_by_white = []
+captured_by_black = []
+
 def speak(text):
+    print(text)
     engine.say(text)
     engine.runAndWait()
 
@@ -232,6 +239,7 @@ def make_random_opponent_move():
             speak("Check.")
         if board.is_game_over():
             handle_game_over()
+
 def handle_game_over():
     if board.is_checkmate():
         speak("Checkmate! Game over.")
@@ -251,6 +259,45 @@ def handle_game_over():
     else:
         speak("Game over.")
         print("🏁 Game over.")
+
+def update_captured_pieces(move, board):
+    if board.is_capture(move):
+        captured_square = move.to_square
+        captured_piece = board.piece_at(captured_square)
+        if captured_piece:
+            if captured_piece.color == chess.WHITE:
+                captured_by_black.append(captured_piece.symbol().upper())
+            else:
+                captured_by_white.append(captured_piece.symbol().upper())
+
+def describe_game_summary(board, captured_by_white, captured_by_black):
+
+    total_moves = board.fullmove_number
+    speak(f"The game has progressed {total_moves} full moves.")
+
+    white_captures = ', '.join(captured_by_white) if captured_by_white else "none"
+    black_captures = ', '.join(captured_by_black) if captured_by_black else "none"
+
+    speak(f"White has captured: {white_captures}")
+    speak(f"Black has captured: {black_captures}")
+
+    turn = "White" if board.turn == chess.WHITE else "Black"
+    speak(f"It is now {turn}'s turn.")
+
+    if board.is_checkmate():
+        winner = "White" if board.turn == chess.BLACK else "Black"
+        speak(f"Checkmate! {winner} has won.")
+    elif board.is_stalemate():
+        speak("The game ended in a stalemate.")
+    elif board.is_check():
+        speak(f"{turn} is currently in check.")
+
+    piece_counts = board.piece_map().values()
+    num_white = len([p for p in piece_counts if p.color == chess.WHITE])
+    num_black = len([p for p in piece_counts if p.color == chess.BLACK])
+    speak(f"White has {num_white} pieces on the board.")
+    speak(f"Black has {num_black} pieces on the board.")
+
 
 def find_piece(board, piece_symbol, color):
     squares = []
@@ -278,13 +325,14 @@ def main():
             spoken = recognize_voice()
             if spoken:
                 spoken = spoken.lower()
+ 
                 spoken = spoken.replace("night", "knight")
                 spoken = spoken.replace("rock", "rook")
                 spoken = spoken.replace("brook", "rook")
                 spoken = spoken.replace("horse", "knight")
                 spoken = spoken.replace("elephant", "rook")
 
-                # ✅ Handle "Where is my [piece]?" voice queries
+
                 if any(word in spoken for word in ["where", "my", "king", "queen", "bishop", "rook", "knight", "pawn"]):
                     piece = None
                     if "king" in spoken:
@@ -368,6 +416,9 @@ def main():
                     else:
                         speak(f"There are no {color_str} {piece_name}s on the board.")
                     continue
+                elif "summary" in spoken or "summarize" in spoken:
+                    describe_game_summary(board, captured_by_white, captured_by_black)
+                    continue
 
                 if move_str:
                     try:
@@ -376,7 +427,11 @@ def main():
                             is_capture = board.is_capture(move)
                             moving_piece = board.piece_at(move.from_square)
                             piece_name = piece_name_map[str(moving_piece)].split('_')[1].capitalize() if moving_piece else "Piece"
+
+                            update_captured_pieces(move, board) 
+
                             board.push(move)
+
                             if board.is_check():
                                 speak("Check.")
                             if board.is_game_over():
@@ -403,7 +458,6 @@ def main():
                                 speak("Now my move...")
                                 time.sleep(0.5)
                                 make_random_opponent_move()
-
                                 draw_board()
                                 draw_pieces()
                                 pygame.display.flip()
